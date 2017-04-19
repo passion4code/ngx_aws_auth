@@ -46,7 +46,7 @@ Implements proxying of authenticated requests to S3.
       aws_access_key your_aws_access_key;
       aws_secret_key the_secret_associated_with_the_above_access_key;
       s3_bucket your_s3_bucket;
-      aws_uri_replace $somepath; # Take out this part of the URL before signing it, since '/myfiles' will not be part of the URI sent to Amazon  
+      aws_uri_replace $somepath; # Replace the base URI that is being signed because we're explicitly declaring a custom path above
 
 
       proxy_set_header Authorization $s3_auth_token;
