@@ -422,20 +422,15 @@ ngx_http_aws_auth_get_canon_resource(ngx_http_request_t *r, ngx_str_t *retstr) {
     int uri_len;
     aws_conf = ngx_http_get_module_loc_conf(r, ngx_http_aws_auth_module);
     u_char *uri = ngx_palloc(r->pool, r->uri.len * 3 + 1); // allow room for escaping
-     ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "uri here:    %s", uri); 
-    u_char *uri_end = (u_char*) ngx_escape_uri(uri,r->uri.data, r->uri.len, NGX_ESCAPE_URI);
-    ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "uri now here:    %s", uri); 
+    u_char *uri_end = (u_char*) ngx_escape_uri(uri,r->uri.data, r->uri.len, NGX_ESCAPE_URI);    
     *uri_end = '\0'; // null terminate
-
     if (aws_conf->chop_prefix.len > 0) {
         if (!ngx_strncmp(r->uri.data, aws_conf->chop_prefix.data, aws_conf->chop_prefix.len)) {
-          ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "old uri:    %s", uri); 
-          ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "old uri length:    %d", uri); 
+          ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "uri before chop:    %s", uri); 
           uri += aws_conf->chop_prefix.len;
           ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
             "chop_prefix '%V' chopped from URI",&aws_conf->chop_prefix);
-          ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "new uri:    %s", uri);
-          ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "new uri:    %d", uri); 
+          ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "new uri aftr chop:    %s", uri);
         } else {
           ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
             "chop_prefix '%V' NOT in URI",&aws_conf->chop_prefix);
@@ -449,7 +444,7 @@ ngx_http_aws_auth_get_canon_resource(ngx_http_request_t *r, ngx_str_t *retstr) {
             "uri_replace '%V' ",&aws_conf->uri_replace);
         uri = ngx_palloc(r->pool, aws_conf->uri_replace.len * 3 + 1); // allow room for escaping
          ngx_escape_uri(uri,aws_conf->uri_replace.data, aws_conf->uri_replace.len, NGX_ESCAPE_URI);
-        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "after suffix uri:    %s", uri); 
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "uri replaced - new uri:    %s", uri); 
     }
 
 
