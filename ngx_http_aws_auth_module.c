@@ -439,11 +439,9 @@ ngx_http_aws_auth_get_canon_resource(ngx_http_request_t *r, ngx_str_t *retstr) {
 
 
     if (aws_conf->uri_replace.len > 0) {
-        
-        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
-            "uri_replace '%V' ",&aws_conf->uri_replace);
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,"uri_replace '%V' ",&aws_conf->uri_replace);
         uri = ngx_palloc(r->pool, aws_conf->uri_replace.len * 3 + 1); // allow room for escaping
-         ngx_escape_uri(uri,aws_conf->uri_replace.data, aws_conf->uri_replace.len, NGX_ESCAPE_URI);
+        uri_end = (u_char*) ngx_escape_uri(uri,aws_conf->uri_replace.data, aws_conf->uri_replace.len, NGX_ESCAPE_URI);
         ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "uri replaced - new uri:    %s", uri); 
     }
 
