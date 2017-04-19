@@ -19,6 +19,8 @@ static char *
 ngx_http_aws_auth_set_s3_bucket(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static char *
 ngx_http_aws_auth_set_chop_prefix(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static char *
+ngx_http_aws_auth_set_uri_replace(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 typedef struct {
     ngx_array_t                *lengths;
@@ -30,8 +32,10 @@ typedef struct {
     ngx_str_t secret;
     ngx_str_t s3_bucket;
     ngx_str_t chop_prefix;
+    ngx_str_t uri_replace;
     ngx_http_aws_auth_script_t *s3_bucket_script;
     ngx_http_aws_auth_script_t *chop_prefix_script;
+    ngx_http_aws_auth_script_t *uri_replace_script;
 } ngx_http_aws_auth_conf_t;
 
 static const char *signed_subresources[] = {
@@ -88,6 +92,13 @@ static ngx_command_t  ngx_http_aws_auth_commands[] = {
       ngx_http_aws_auth_set_chop_prefix,
       NGX_HTTP_LOC_CONF_OFFSET,
       offsetof(ngx_http_aws_auth_conf_t, chop_prefix),
+      NULL },
+
+    { ngx_string("aws_uri_replace"),
+      NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      ngx_http_aws_auth_set_uri_replace,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_http_aws_auth_conf_t, uri_replace),
       NULL },
 
       ngx_null_command
@@ -199,6 +210,47 @@ ngx_http_aws_auth_set_chop_prefix(ngx_conf_t *cf, ngx_command_t *cmd, void *conf
     return NGX_CONF_OK;
 }
 
+static char *
+ngx_http_aws_auth_set_uri_replace(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+{
+    ngx_http_aws_auth_conf_t *aws_conf = conf;
+    ngx_http_script_compile_t   sc;
+    ngx_str_t *value;
+    ngx_uint_t n;
+    value = cf->args->elts;
+
+
+    n = ngx_http_script_variables_count(&value[1]);
+
+    if (n == 0) {
+        // set uri_replace as string
+        aws_conf->uri_replace.data = value[1].data;
+        aws_conf->uri_replace.len  = value[1].len;
+    } else {
+        //add script to compile
+        aws_conf->uri_replace_script = ngx_pcalloc(cf->pool, sizeof(ngx_http_aws_auth_script_t));
+        if (aws_conf->uri_replace_script == NULL) {
+            return NGX_CONF_ERROR;
+        }
+
+        ngx_memzero(&sc, sizeof(ngx_http_script_compile_t));
+
+        sc.cf = cf;
+        sc.source = &value[1];
+        sc.lengths = &aws_conf->uri_replace_script->lengths;
+        sc.values = &aws_conf->uri_replace_script->values;
+        sc.variables = n;
+        sc.complete_lengths = 1;
+        sc.complete_values = 1;
+
+        if (ngx_http_script_compile(&sc) != NGX_OK) {
+            return NGX_CONF_ERROR;
+        }
+    }
+
+    return NGX_CONF_OK;
+}
+
 
 static void *
 ngx_http_aws_auth_create_loc_conf(ngx_conf_t *cf)
@@ -224,6 +276,7 @@ ngx_http_aws_auth_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
     ngx_conf_merge_str_value(conf->access_key, prev->access_key, "");
     ngx_conf_merge_str_value(conf->secret, prev->secret, "");
     ngx_conf_merge_str_value(conf->chop_prefix, prev->chop_prefix, "");
+    ngx_conf_merge_str_value(conf->uri_replace, prev->uri_replace, "");
 
     return NGX_CONF_OK;
 }
@@ -369,19 +422,36 @@ ngx_http_aws_auth_get_canon_resource(ngx_http_request_t *r, ngx_str_t *retstr) {
     int uri_len;
     aws_conf = ngx_http_get_module_loc_conf(r, ngx_http_aws_auth_module);
     u_char *uri = ngx_palloc(r->pool, r->uri.len * 3 + 1); // allow room for escaping
+     ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "uri here:    %s", uri); 
     u_char *uri_end = (u_char*) ngx_escape_uri(uri,r->uri.data, r->uri.len, NGX_ESCAPE_URI);
+    ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "uri now here:    %s", uri); 
     *uri_end = '\0'; // null terminate
 
     if (aws_conf->chop_prefix.len > 0) {
         if (!ngx_strncmp(r->uri.data, aws_conf->chop_prefix.data, aws_conf->chop_prefix.len)) {
+          ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "old uri:    %s", uri); 
+          ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "old uri length:    %d", uri); 
           uri += aws_conf->chop_prefix.len;
           ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
             "chop_prefix '%V' chopped from URI",&aws_conf->chop_prefix);
+          ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "new uri:    %s", uri);
+          ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "new uri:    %d", uri); 
         } else {
           ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
             "chop_prefix '%V' NOT in URI",&aws_conf->chop_prefix);
         }
     }
+
+
+    if (aws_conf->uri_replace.len > 0) {
+        
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
+            "uri_replace '%V' ",&aws_conf->uri_replace);
+        uri = ngx_palloc(r->pool, aws_conf->uri_replace.len * 3 + 1); // allow room for escaping
+         ngx_escape_uri(uri,aws_conf->uri_replace.data, aws_conf->uri_replace.len, NGX_ESCAPE_URI);
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "after suffix uri:    %s", uri); 
+    }
+
 
     u_char *c_args = ngx_palloc(r->pool, r->args.len + 1); 
     u_char *c_args_cur = c_args;
@@ -451,6 +521,13 @@ ngx_http_aws_auth_get_dynamic_variables(ngx_http_request_t *r){
             return NGX_ERROR;
         }
         aws_conf->chop_prefix.len = aws_conf->chop_prefix.len -1;
+    }
+    if (aws_conf->uri_replace_script != NULL){
+        if (ngx_http_script_run(r, &aws_conf->uri_replace, aws_conf->uri_replace_script->lengths->elts, 1,
+                                aws_conf->uri_replace_script->values->elts) == NULL) {
+            return NGX_ERROR;
+        }
+        aws_conf->uri_replace.len = aws_conf->uri_replace.len -1;
     }
     return NGX_OK;
 }
