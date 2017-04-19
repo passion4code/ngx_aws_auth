@@ -1,8 +1,13 @@
 # AWS proxy module
 
+
+
+
 This branch contains the legacy code based on the deprecated AWS V2 authentication protocol.
 The code here is well tested in production. You can find the experimental support for the
-V4 authentication protocol that will work with all new regions of AWS under the master branch
+V4 authentication protocol that will work with all new regions of AWS under the master branch.
+
+
 
 Implements proxying of authenticated requests to S3.
 
@@ -86,6 +91,16 @@ Original idea based on http://nginx.org/pipermail/nginx/2010-February/018583.htm
 
 Subsequent contributions can be found in the commit logs of the project.
 
+
+This Fork's Modifications
+=============
+
+The `aws_uri_replace` configuration option has been added to allow fully controlling the URI to be signed. This is useful if your AWS bucket pathing does not directly match the URI pattern proxied.
+
+
 License
 -------
 This project uses the same license as ngnix does i.e. the 2 clause BSD / simplified BSD / FreeBSD license
+
+
+
