@@ -438,12 +438,13 @@ ngx_http_aws_auth_get_canon_resource(ngx_http_request_t *r, ngx_str_t *retstr) {
     }
 
 
-    if (aws_conf->uri_replace.len > 0) {
-        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,"uri_replace '%V' ",&aws_conf->uri_replace);
-        uri = ngx_palloc(r->pool, aws_conf->uri_replace.len * 3 + 1); // allow room for escaping
-        uri_end = (u_char*) ngx_escape_uri(uri,aws_conf->uri_replace.data, aws_conf->uri_replace.len, NGX_ESCAPE_URI);
-        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "uri replaced - new uri:    %s", uri); 
-    }
+    // if (aws_conf->uri_replace.len > 0) {
+    //     ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,"uri_replace '%V' ",&aws_conf->uri_replace);
+    //     uri = ngx_palloc(r->pool, aws_conf->uri_replace.len * 3 + 1); // allow room for escaping
+    //     uri_end = (u_char*) ngx_escape_uri(uri,aws_conf->uri_replace.data, aws_conf->uri_replace.len, NGX_ESCAPE_URI);
+    //     *uri_end = '\0';
+    //     ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "uri replaced - new uri:    %s", uri); 
+    // }
 
 
     u_char *c_args = ngx_palloc(r->pool, r->args.len + 1); 
@@ -473,14 +474,26 @@ ngx_http_aws_auth_get_canon_resource(ngx_http_request_t *r, ngx_str_t *retstr) {
         *c_args_cur = '\0';
     } 
 
-    uri_len = ngx_strlen(uri);
+    if ( aws_conf->uri_replace.len > 0) {
+        uri_len = ngx_strlen(aws_conf->uri_replace.data);
+    } else {
+        uri_len = ngx_strlen(uri);
+    }
+    
     u_char *ret = ngx_palloc(r->pool, uri_len + aws_conf->s3_bucket.len + sizeof("/") + c_args_len + 1); 
     u_char *cur = ret; 
     cur = ngx_cpystrn(cur, (u_char *)"/", sizeof("/"));
+    
     ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "bucket: %V", &aws_conf->s3_bucket);
     ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "uri:    %s", uri);
     cur = ngx_cpystrn(cur, aws_conf->s3_bucket.data, aws_conf->s3_bucket.len + 1);
-    cur = ngx_cpystrn(cur, uri, uri_len + 1);
+
+     if ( aws_conf->uri_replace.len > 0) {
+        cur = ngx_cpystrn(cur, aws_conf->uri_replace.data, uri_len + 1);
+     }else {
+        cur = ngx_cpystrn(cur, uri, uri_len + 1);
+     }
+    
       
     if ( c_args_len ) {
         ngx_memcpy(cur, c_args, c_args_len + 1);
