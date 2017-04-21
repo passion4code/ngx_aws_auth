@@ -1,5 +1,12 @@
 # Changelog
 
+
+## Version 1.2.3
+Fix bugs with URI replacement
+
+## Version 1.2.0 
+Adds support for URI Replacement
+
 ## Version 1.1.1
 AWS dat header is computed unconditionallt. See #11
 

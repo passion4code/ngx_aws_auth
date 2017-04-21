@@ -421,88 +421,93 @@ ngx_http_aws_auth_get_canon_resource(ngx_http_request_t *r, ngx_str_t *retstr) {
     ngx_http_aws_auth_conf_t *aws_conf;
     int uri_len;
     aws_conf = ngx_http_get_module_loc_conf(r, ngx_http_aws_auth_module);
-    u_char *uri = ngx_palloc(r->pool, r->uri.len * 3 + 1); // allow room for escaping
-    u_char *uri_end = (u_char*) ngx_escape_uri(uri,r->uri.data, r->uri.len, NGX_ESCAPE_URI);    
-    *uri_end = '\0'; // null terminate
-    if (aws_conf->chop_prefix.len > 0) {
-        if (!ngx_strncmp(r->uri.data, aws_conf->chop_prefix.data, aws_conf->chop_prefix.len)) {
-          ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "uri before chop:    %s", uri); 
-          uri += aws_conf->chop_prefix.len;
-          ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
-            "chop_prefix '%V' chopped from URI",&aws_conf->chop_prefix);
-          ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "new uri aftr chop:    %s", uri);
-        } else {
-          ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-            "chop_prefix '%V' NOT in URI",&aws_conf->chop_prefix);
-        }
-    }
-
-
-    // if (aws_conf->uri_replace.len > 0) {
-    //     ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,"uri_replace '%V' ",&aws_conf->uri_replace);
-    //     uri = ngx_palloc(r->pool, aws_conf->uri_replace.len * 3 + 1); // allow room for escaping
-    //     uri_end = (u_char*) ngx_escape_uri(uri,aws_conf->uri_replace.data, aws_conf->uri_replace.len, NGX_ESCAPE_URI);
-    //     *uri_end = '\0';
-    //     ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "uri replaced - new uri:    %s", uri); 
-    // }
-
-
-    u_char *c_args = ngx_palloc(r->pool, r->args.len + 1); 
-    u_char *c_args_cur = c_args;
-    ngx_str_t arg_val;
-    ngx_int_t c_args_len = 0;
-    if (r->args.len > 0) {
-        const char **p = signed_subresources;
-        for (; *p; ++p) {
-            if (ngx_http_arg2(r, (u_char *)*p, ngx_strlen((u_char *)*p), &arg_val) == NGX_OK) {
-                if (c_args_cur == c_args) {
-                    *c_args_cur = '?';
-                } else {
-                    *c_args_cur = '&';
-                }
-                c_args_cur += 1;
-                c_args_cur = ngx_cpystrn(c_args_cur, (u_char *)*p, ngx_strlen((u_char *)*p) + 1);
-                if (arg_val.len > 0) {
-                    *c_args_cur = '=';
-                    c_args_cur += 1;
-                    ngx_memcpy(c_args_cur, arg_val.data, arg_val.len);
-                    c_args_cur += arg_val.len;
-                }
-            }
-        }
-        c_args_len = c_args_cur - c_args;
-        *c_args_cur = '\0';
-    } 
 
     if ( aws_conf->uri_replace.len > 0) {
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "Using uri_replace:    %V", &aws_conf->uri_replace);
+        u_char *uri = ngx_palloc(r->pool, aws_conf->uri_replace.len * 3 + 1); // allow room for escaping
+        u_char *uri_end = (u_char*) ngx_escape_uri(uri,aws_conf->uri_replace.data, aws_conf->uri_replace.len, NGX_ESCAPE_URI);
+        *uri_end = '\0'; // null terminate
+        
         uri_len = ngx_strlen(aws_conf->uri_replace.data);
-    } else {
-        uri_len = ngx_strlen(uri);
-    }
-    
-    u_char *ret = ngx_palloc(r->pool, uri_len + aws_conf->s3_bucket.len + sizeof("/") + c_args_len + 1); 
-    u_char *cur = ret; 
-    cur = ngx_cpystrn(cur, (u_char *)"/", sizeof("/"));
-    
-    ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "bucket: %V", &aws_conf->s3_bucket);
-    ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "uri:    %s", uri);
-    cur = ngx_cpystrn(cur, aws_conf->s3_bucket.data, aws_conf->s3_bucket.len + 1);
 
-     if ( aws_conf->uri_replace.len > 0) {
-        cur = ngx_cpystrn(cur, aws_conf->uri_replace.data, uri_len + 1);
-     }else {
+        u_char *ret = ngx_palloc(r->pool, uri_len + aws_conf->s3_bucket.len + sizeof("/")  + 1); 
+        u_char *cur = ret; 
+        cur = ngx_cpystrn(cur, (u_char *)"/", sizeof("/"));
+        
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "bucket: %V", &aws_conf->s3_bucket);
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "uri:    %s", uri);
+        cur = ngx_cpystrn(cur, aws_conf->s3_bucket.data, aws_conf->s3_bucket.len + 1);
         cur = ngx_cpystrn(cur, uri, uri_len + 1);
-     }
-    
-      
-    if ( c_args_len ) {
-        ngx_memcpy(cur, c_args, c_args_len + 1);
-        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "args: %s", c_args);
+
+        *cur = '\0';
+        retstr->data = ret;
+        retstr->len = sizeof("/") - 1 + uri_len + aws_conf->s3_bucket.len;
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "normalized resources: %V", retstr);
+
+    } else {
+        u_char *uri = ngx_palloc(r->pool, r->uri.len * 3 + 1); // allow room for escaping
+        u_char *uri_end = (u_char*) ngx_escape_uri(uri,r->uri.data, r->uri.len, NGX_ESCAPE_URI);    
+        *uri_end = '\0'; // null terminate
+        if (aws_conf->chop_prefix.len > 0) {
+            if (!ngx_strncmp(r->uri.data, aws_conf->chop_prefix.data, aws_conf->chop_prefix.len)) {
+              ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "uri before chop:    %s", uri); 
+              uri += aws_conf->chop_prefix.len;
+              ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
+                "chop_prefix '%V' chopped from URI",&aws_conf->chop_prefix);
+              ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "new uri aftr chop:    %s", uri);
+            } else {
+              ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                "chop_prefix '%V' NOT in URI",&aws_conf->chop_prefix);
+            }
+        }
+
+        u_char *c_args = ngx_palloc(r->pool, r->args.len + 1); 
+        u_char *c_args_cur = c_args;
+        ngx_str_t arg_val;
+        ngx_int_t c_args_len = 0;
+        if (r->args.len > 0) {
+            const char **p = signed_subresources;
+            for (; *p; ++p) {
+                if (ngx_http_arg2(r, (u_char *)*p, ngx_strlen((u_char *)*p), &arg_val) == NGX_OK) {
+                    if (c_args_cur == c_args) {
+                        *c_args_cur = '?';
+                    } else {
+                        *c_args_cur = '&';
+                    }
+                    c_args_cur += 1;
+                    c_args_cur = ngx_cpystrn(c_args_cur, (u_char *)*p, ngx_strlen((u_char *)*p) + 1);
+                    if (arg_val.len > 0) {
+                        *c_args_cur = '=';
+                        c_args_cur += 1;
+                        ngx_memcpy(c_args_cur, arg_val.data, arg_val.len);
+                        c_args_cur += arg_val.len;
+                    }
+                }
+            }
+            c_args_len = c_args_cur - c_args;
+            *c_args_cur = '\0';
+        } 
+        uri_len = ngx_strlen(uri);
+
+        u_char *ret = ngx_palloc(r->pool, uri_len + aws_conf->s3_bucket.len + sizeof("/") + c_args_len + 1); 
+        u_char *cur = ret; 
+        cur = ngx_cpystrn(cur, (u_char *)"/", sizeof("/"));
+        
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "bucket: %V", &aws_conf->s3_bucket);
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "uri:    %s", uri);
+        cur = ngx_cpystrn(cur, aws_conf->s3_bucket.data, aws_conf->s3_bucket.len + 1);
+        cur = ngx_cpystrn(cur, uri, uri_len + 1);
+
+        if ( c_args_len ) {
+            ngx_memcpy(cur, c_args, c_args_len + 1);
+            ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "args: %s", c_args);
+        }
+        *(cur+c_args_len) = '\0';
+        retstr->data = ret;
+        retstr->len = sizeof("/") - 1 + uri_len + aws_conf->s3_bucket.len + c_args_len;
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "normalized resources: %V", retstr);
+
     }
-    *(cur+c_args_len) = '\0';
-    retstr->data = ret;
-    retstr->len = sizeof("/") - 1 + uri_len + aws_conf->s3_bucket.len + c_args_len;
-    ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "normalized resources: %V", retstr);
 
     return NGX_OK;
 }
